@@ -1,0 +1,17 @@
+# Ignore everything
+*
+
+# Allow root files
+!.gitignore
+!app.py
+!main.py
+!server.py
+!requirements.txt
+
+# Allow web folder
+!web/
+!web/**
+
+# Optional: ignore Python cache even inside allowed folders
+__pycache__/
+*.pyc
