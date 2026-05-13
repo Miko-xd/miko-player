@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   MIKO PLAYER  ·  Client-side Logic (Single Account, No Login)
+   MIKO PLAYER  ·  Client-side Logic
    ═══════════════════════════════════════════════════════════════ */
 (() => {
   "use strict";
@@ -18,10 +18,18 @@
   const queueToggleBtn = $("#queueToggleBtn"), queuePanel = $("#queuePanel");
   const closeQueueBtn = $("#closeQueueBtn"), queueList = $("#queueList");
   const clientAudio = $("#clientAudio");
+  const likeBtn = $("#likeBtn"), addToPlaylistBtn = $("#addToPlaylistBtn");
+  const sidebarToggleBtn = $("#sidebarToggleBtn"), sidebarPanel = $("#sidebarPanel");
+  const closeSidebarBtn = $("#closeSidebarBtn"), sidebarContent = $("#sidebarContent");
+  const modalOverlay = $("#modalOverlay"), modalCard = $("#modalCard");
+  const playModeBtn = $("#playModeBtn"), playModeIcon = $("#playModeIcon"), playModeLabel = $("#playModeLabel");
 
   let currentLyrics = [], activeLyricIdx = -1, statusPoll = null;
   let searchDebounce = null, selectedSuggestionIdx = -1, currentSuggestions = [];
   let lastPlayedVideoId = null, isDragging = false;
+  let currentVideoId = null, isCurrentLiked = false;
+  let playMode = "smart_shuffle";
+  const MODES = [{ m: "list", i: "📋", l: "List Play" }, { m: "shuffle", i: "🔀", l: "Shuffle" }, { m: "smart_shuffle", i: "✨", l: "Smart Shuffle" }];
 
   let audioUnlocked = false;
   function unlockAudio() { if (!audioUnlocked) audioUnlocked = true; }
@@ -32,6 +40,12 @@
     const url = new URL(`/api${path}`, window.location.origin);
     return fetch(url, opts).then(r => r.json());
   };
+  // Expose API globally for library.js
+  window.MikoAPI = API;
+  window.MikoModal = { show: showModal, hide: hideModal };
+  window.MikoEscape = escapeHtml;
+  window.MikoFormatTime = formatTime;
+  window.MikoPlaySong = playSong;
 
   clientAudio.addEventListener("ended", () => API("/next", { method: "POST" }));
   clientAudio.addEventListener("timeupdate", () => {
@@ -46,7 +60,7 @@
 
   setInterval(() => {
     if (clientAudio.src && !clientAudio.paused) {
-      API("/report_state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state: "playing", position: clientAudio.currentTime }) }).catch(()=>{});
+      API("/report_state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state: "playing", position: clientAudio.currentTime }) }).catch(() => { });
     }
   }, 5000);
 
@@ -85,6 +99,8 @@
 
   queueToggleBtn.addEventListener("click", () => queuePanel.classList.add("open"));
   closeQueueBtn.addEventListener("click", () => queuePanel.classList.remove("open"));
+  sidebarToggleBtn.addEventListener("click", () => { sidebarPanel.classList.add("open"); if (window.MikoLibrary) window.MikoLibrary.renderMain(); });
+  closeSidebarBtn.addEventListener("click", () => sidebarPanel.classList.remove("open"));
 
   function updateSuggestionSelection(items) {
     items.forEach((el, i) => el.classList.toggle("selected", i === selectedSuggestionIdx));
@@ -122,7 +138,7 @@
   });
 
   playPauseBtn.addEventListener("click", () => {
-    if (clientAudio.paused) { clientAudio.play().catch(()=>{}); API("/report_state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state: "playing" }) }); }
+    if (clientAudio.paused) { clientAudio.play().catch(() => { }); API("/report_state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state: "playing" }) }); }
     else { clientAudio.pause(); API("/report_state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state: "paused" }) }); }
   });
   stopBtn.addEventListener("click", () => { clientAudio.pause(); clientAudio.currentTime = 0; API("/report_state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state: "stopped" }) }); });
@@ -130,6 +146,72 @@
   nextBtn.addEventListener("click", () => API("/next", { method: "POST" }));
   volumeSlider.addEventListener("input", () => { clientAudio.volume = +volumeSlider.value / 100; });
 
+  // Like button
+  likeBtn.addEventListener("click", async () => {
+    if (!currentVideoId) return;
+    const d = await API("/like", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ video_id: currentVideoId, title: songTitle.textContent, artist: songArtist.textContent, thumbnail: artworkImg.src || "" }) });
+    isCurrentLiked = d.liked;
+    updateLikeUI();
+  });
+
+  function updateLikeUI() {
+    if (isCurrentLiked) { likeBtn.classList.add("liked"); $("#iconHeartOutline").style.display = "none"; $("#iconHeartFilled").style.display = "block"; }
+    else { likeBtn.classList.remove("liked"); $("#iconHeartOutline").style.display = "block"; $("#iconHeartFilled").style.display = "none"; }
+  }
+
+  // Add to playlist button
+  addToPlaylistBtn.addEventListener("click", async () => {
+    if (!currentVideoId) return;
+    const playlists = await API("/playlists");
+    let html = '<h3 class="modal-title">Add to Playlist</h3>';
+    if (playlists.length === 0) html += '<p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:12px;">No playlists yet</p>';
+    playlists.forEach(p => {
+      const coverHtml = p.cover ? `<img src="${p.cover}" alt="">` : "🎵";
+      html += `<div class="playlist-select-item" data-pid="${p.id}"><div class="playlist-select-cover">${coverHtml}</div><div class="playlist-select-name">${escapeHtml(p.name)}</div></div>`;
+    });
+    html += `<div class="modal-actions"><button class="modal-btn modal-btn-ghost" onclick="window.MikoModal.hide()">Cancel</button><button class="modal-btn modal-btn-primary" id="modalCreateNew">+ New Playlist</button></div>`;
+    showModal(html);
+    modalCard.querySelectorAll(".playlist-select-item").forEach(el => {
+      el.addEventListener("click", async () => {
+        await API(`/playlists/${el.dataset.pid}/songs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ video_id: currentVideoId, title: songTitle.textContent, artist: songArtist.textContent, thumbnail: artworkImg.src || "" }) });
+        hideModal();
+      });
+    });
+    const createBtn = $("#modalCreateNew");
+    if (createBtn) createBtn.addEventListener("click", () => showCreatePlaylistModal());
+  });
+
+  // Play mode toggle
+  playModeBtn.addEventListener("click", () => {
+    const idx = MODES.findIndex(m => m.m === playMode);
+    const next = MODES[(idx + 1) % MODES.length];
+    playMode = next.m;
+    playModeIcon.textContent = next.i;
+    playModeLabel.textContent = next.l;
+    API("/play_mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: playMode }) });
+  });
+
+  // Modal helpers
+  function showModal(html) { modalCard.innerHTML = html; modalOverlay.style.display = "flex"; }
+  function hideModal() { modalOverlay.style.display = "none"; modalCard.innerHTML = ""; }
+  modalOverlay.addEventListener("click", (e) => { if (e.target === modalOverlay) hideModal(); });
+
+  function showCreatePlaylistModal() {
+    const html = `<h3 class="modal-title">Create Playlist</h3><input class="modal-input" id="newPlName" placeholder="Playlist name" autofocus /><div class="modal-actions"><button class="modal-btn modal-btn-ghost" onclick="window.MikoModal.hide()">Cancel</button><button class="modal-btn modal-btn-primary" id="modalCreateConfirm">Create</button></div>`;
+    showModal(html);
+    const confirmBtn = $("#modalCreateConfirm");
+    confirmBtn.addEventListener("click", async () => {
+      const name = $("#newPlName").value.trim();
+      if (!name) return;
+      await API("/playlists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+      hideModal();
+      if (window.MikoLibrary) window.MikoLibrary.renderMain();
+    });
+    $("#newPlName").addEventListener("keydown", (e) => { if (e.key === "Enter") confirmBtn.click(); });
+  }
+  window.MikoCreatePlaylist = showCreatePlaylistModal;
+
+  // Progress bar
   function getSeekPos(e) { const rect = progressTrack.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)); }
   function updateProgressVisual(pos) { const pct = pos * 100; progressFill.style.width = pct + "%"; progressThumb.style.left = pct + "%"; progressThumb.style.opacity = "1"; }
   function seekTo(pos) { const dur = (clientAudio.duration && clientAudio.duration !== Infinity) ? clientAudio.duration : (window.lastKnownDuration || 0); if (dur > 0) { clientAudio.currentTime = pos * dur; API("/report_state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ position: clientAudio.currentTime }) }); } }
@@ -145,8 +227,22 @@
     if (!data || !data.current_song) return;
     const d = data.current_song;
     if (data.video_id && data.video_id !== lastPlayedVideoId) { lastPlayedVideoId = data.video_id; clientAudio.src = `/api/stream?t=${Date.now()}`; clientAudio.play().catch(e => console.warn("Autoplay prevented:", e)); }
-    if (d.state === "playing" && clientAudio.paused) { clientAudio.play().catch(()=>{}); } else if (d.state !== "playing" && !clientAudio.paused) { clientAudio.pause(); }
+    if (d.state === "playing" && clientAudio.paused) { clientAudio.play().catch(() => { }); } else if (d.state !== "playing" && !clientAudio.paused) { clientAudio.pause(); }
     songTitle.textContent = d.title || "Search a song to play"; songArtist.textContent = d.artist || "—";
+
+    // Update like state when song changes
+    if (data.video_id && data.video_id !== currentVideoId) {
+      currentVideoId = data.video_id;
+      API(`/is_liked?video_id=${currentVideoId}`).then(r => { isCurrentLiked = r.liked; updateLikeUI(); }).catch(() => { });
+    }
+
+    // Play mode sync
+    if (data.play_mode && data.play_mode !== playMode) {
+      playMode = data.play_mode;
+      const mi = MODES.find(m => m.m === playMode);
+      if (mi) { playModeIcon.textContent = mi.i; playModeLabel.textContent = mi.l; }
+    }
+
     if ("mediaSession" in navigator && d.title) { navigator.mediaSession.metadata = new MediaMetadata({ title: d.title, artist: d.artist || "Miko Player", artwork: d.thumbnail ? [{ src: d.thumbnail, sizes: "512x512", type: "image/jpeg" }] : [] }); navigator.mediaSession.playbackState = d.state === "playing" ? "playing" : "paused"; }
     if (data.queue && data.queue.length > 0) {
       const queueHash = data.queue.length + "-" + data.queue_index;
@@ -193,7 +289,6 @@
     navigator.mediaSession.setActionHandler("previoustrack", () => prevBtn.click());
   }
 
-  // No login — start immediately
   startPolling();
   clientAudio.src = `/api/stream`;
   searchInput.focus();

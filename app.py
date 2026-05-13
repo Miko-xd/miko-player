@@ -23,8 +23,9 @@ window = webview.create_window(
     "http://127.0.0.1:5000",
     frameless=True,
     easy_drag=False,
-    fullscreen=True
+    fullscreen=True    
+
 )
 # window.maximize()
 
-webview.start()
+webview.start(private_mode=False)

@@ -16,7 +16,7 @@
 
 <body>
 
-  <!-- ═══════════════════════ AMBIENT BACKGROUND ═══════════════════════ -->
+  <!-- AMBIENT BACKGROUND -->
   <div class="ambient-bg">
     <div class="ambient-bg-img" id="ambientBgImg"></div>
     <div class="ambient-bg-overlay"></div>
@@ -25,11 +25,16 @@
   <!-- Client Audio Engine -->
   <audio id="clientAudio" autoplay></audio>
 
-  <!-- ═══════════════════════ MAIN CONTAINER ═══════════════════════ -->
+  <!-- MAIN CONTAINER -->
   <div class="app-container">
 
     <!-- HEADER -->
     <header class="header" id="header">
+      <button id="sidebarToggleBtn" class="sidebar-toggle-btn" title="Library">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 6h16M4 12h10M4 18h16" />
+        </svg>
+      </button>
       <div class="logo">
         <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="3" />
@@ -66,13 +71,11 @@
           </svg>
         </button>
       </div>
-      <!-- Search suggestions dropdown -->
       <div class="suggestions-dropdown" id="suggestionsDropdown"></div>
     </section>
 
     <!-- NOW PLAYING -->
     <section class="player-section" id="playerSection">
-      <!-- Album Art / Visualizer -->
       <div class="artwork-container" id="artworkContainer">
         <div class="artwork-glow" id="artworkGlow"></div>
         <div class="artwork" id="artwork">
@@ -85,17 +88,14 @@
           </div>
           <img id="artworkImg" class="artwork-img" alt="" />
         </div>
-        <!-- Spinning disc ring -->
         <div class="disc-ring" id="discRing"></div>
       </div>
 
-      <!-- Song Info -->
       <div class="song-info">
         <h1 class="song-title" id="songTitle">Search a song to play</h1>
         <p class="song-artist" id="songArtist">—</p>
       </div>
 
-      <!-- Lyrics Panel -->
       <div class="lyrics-panel" id="lyricsPanel">
         <div class="lyrics-scroll" id="lyricsScroll">
           <p class="lyrics-placeholder" id="lyricsPlaceholder">Lyrics will appear here…</p>
@@ -112,8 +112,18 @@
         <span class="time-label" id="timeDuration">0:00</span>
       </div>
 
-      <!-- Controls -->
+      <!-- Controls with Like & Add buttons -->
       <div class="controls">
+        <button class="ctrl-btn ctrl-action" id="likeBtn" title="Like">
+          <svg id="iconHeartOutline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path
+              d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+          </svg>
+          <svg id="iconHeartFilled" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+            <path
+              d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+          </svg>
+        </button>
         <button class="ctrl-btn" id="stopBtn" title="Stop">
           <svg viewBox="0 0 24 24" fill="currentColor">
             <rect x="6" y="6" width="12" height="12" rx="2" />
@@ -138,6 +148,11 @@
             <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
           </svg>
         </button>
+        <button class="ctrl-btn ctrl-action" id="addToPlaylistBtn" title="Add to Playlist">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
         <div class="volume-wrap">
           <button class="ctrl-btn" id="volumeBtn" title="Volume">
             <svg id="iconVolume" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -149,9 +164,17 @@
           <input type="range" id="volumeSlider" class="volume-slider" min="0" max="100" value="80" />
         </div>
       </div>
+
+      <!-- Play Mode Toggle -->
+      <div class="play-mode-section">
+        <button class="play-mode-btn active" id="playModeBtn" title="Play Mode">
+          <span id="playModeIcon">✨</span>
+          <span id="playModeLabel">Smart Shuffle</span>
+        </button>
+      </div>
     </section>
 
-    <!-- QUEUE PANEL (Slide out from right) -->
+    <!-- QUEUE PANEL -->
     <section class="queue-panel" id="queuePanel">
       <div class="queue-header">
         <h3>Up Next</h3>
@@ -161,14 +184,35 @@
           </svg>
         </button>
       </div>
-      <div class="queue-list" id="queueList">
-        <!-- Queue items injected by JS -->
+      <div class="queue-list" id="queueList"></div>
+    </section>
+
+    <!-- SIDEBAR PANEL (Left) -->
+    <section class="sidebar-panel" id="sidebarPanel">
+      <div class="sidebar-header">
+        <h3>Your Library</h3>
+        <button id="closeSidebarBtn" class="close-btn" title="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div class="sidebar-content" id="sidebarContent">
+        <!-- Dynamic content injected by JS -->
       </div>
     </section>
 
   </div>
 
+  <!-- MODAL OVERLAY (for create playlist, add to playlist, etc.) -->
+  <div class="modal-overlay" id="modalOverlay" style="display:none">
+    <div class="modal-card" id="modalCard">
+      <!-- Dynamic modal content -->
+    </div>
+  </div>
+
   <script src="app.js"></script>
+  <script src="library.js"></script>
 </body>
 
 </html>

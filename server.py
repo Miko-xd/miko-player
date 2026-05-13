@@ -2,6 +2,7 @@ import os
 import time
 import threading
 import json
+import uuid
 import requests
 
 from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context
@@ -12,6 +13,35 @@ import syncedlyrics
 app = Flask(__name__, static_folder="web", static_url_path="")
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 CORS(app)
+
+# ─── Data directory setup ───
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+PLAYLISTS_DIR = os.path.join(DATA_DIR, "playlists")
+COVERS_DIR = os.path.join(DATA_DIR, "covers")
+LIKED_FILE = os.path.join(DATA_DIR, "liked_songs.json")
+PLAYLISTS_INDEX = os.path.join(PLAYLISTS_DIR, "_index.json")
+
+for d in [DATA_DIR, PLAYLISTS_DIR, COVERS_DIR]:
+    os.makedirs(d, exist_ok=True)
+
+def _read_json(path, default=None):
+    if default is None:
+        default = {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return default
+
+def _write_json(path, data):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+# Init files if missing
+if not os.path.exists(LIKED_FILE):
+    _write_json(LIKED_FILE, {"songs": []})
+if not os.path.exists(PLAYLISTS_INDEX):
+    _write_json(PLAYLISTS_INDEX, [])
 
 @app.after_request
 def add_header(response):
@@ -31,7 +61,8 @@ session = {
     "play_queue": [],
     "play_queue_idx": -1,
     "audio_url": "",
-    "video_id": ""
+    "video_id": "",
+    "play_mode": "smart_shuffle"  # list, shuffle, smart_shuffle
 }
 
 
@@ -167,7 +198,7 @@ def _play_queue_index(idx):
 
     threading.Thread(target=_do, daemon=True).start()
 
-# ROUTES
+# ═══════════════════════ ROUTES ═══════════════════════
 
 @app.route("/")
 def index():
@@ -222,7 +253,8 @@ def api_play():
             
             _play_video_obj(video)
 
-            if video_id:
+            # Only fetch mix in smart_shuffle mode
+            if video_id and session.get("play_mode") == "smart_shuffle":
                 mix_entries = _fetch_youtube_mix(video_id)
                 with state_lock:
                     if session["play_queue"] and session["play_queue"][0]["id"] == video_id:
@@ -239,6 +271,42 @@ def api_play():
 
     threading.Thread(target=_do_play, daemon=True).start()
     return jsonify({"status": "ok"})
+
+@app.route("/api/play_list", methods=["POST"])
+def api_play_list():
+    """Play a list of songs (from playlist or liked songs)."""
+    data = request.get_json(force=True)
+    songs = data.get("songs", [])
+    start_idx = data.get("start_index", 0)
+    mode = data.get("mode", "list")  # list, shuffle, smart_shuffle
+    
+    if not songs:
+        return jsonify({"error": "No songs"}), 400
+    
+    import random
+    if mode == "shuffle":
+        # Keep the start song first, shuffle rest
+        start_song = songs[start_idx] if start_idx < len(songs) else songs[0]
+        rest = [s for i, s in enumerate(songs) if i != start_idx]
+        random.shuffle(rest)
+        songs = [start_song] + rest
+        start_idx = 0
+    
+    with state_lock:
+        session["play_mode"] = mode
+        session["play_queue"] = [{"id": s["video_id"], "title": s["title"], "artist": s.get("artist", ""), "duration": 0, "thumbnail": s.get("thumbnail", "")} for s in songs]
+        session["play_queue_idx"] = -1
+    
+    _play_queue_index(start_idx)
+    return jsonify({"status": "ok"})
+
+@app.route("/api/play_mode", methods=["POST"])
+def api_play_mode():
+    data = request.get_json(force=True)
+    mode = data.get("mode", "smart_shuffle")
+    if mode in ("list", "shuffle", "smart_shuffle"):
+        session["play_mode"] = mode
+    return jsonify({"status": "ok", "mode": session["play_mode"]})
 
 @app.route("/api/next", methods=["POST"])
 def api_next():
@@ -290,7 +358,8 @@ def api_status():
         "current_song": session["current_song"],
         "queue": session["play_queue"],
         "queue_index": session["play_queue_idx"],
-        "video_id": session["video_id"]
+        "video_id": session["video_id"],
+        "play_mode": session.get("play_mode", "smart_shuffle")
     })
 
 @app.route("/api/stream")
@@ -311,6 +380,215 @@ def api_stream():
         return resp
     except Exception as e:
         return str(e), 500
+
+# ═══════════════════════ LIKED SONGS ═══════════════════════
+
+@app.route("/api/like", methods=["POST"])
+def api_like():
+    data = request.get_json(force=True)
+    vid = data.get("video_id", "").strip()
+    if not vid:
+        return jsonify({"error": "Missing video_id"}), 400
+    
+    liked = _read_json(LIKED_FILE, {"songs": []})
+    existing = [s for s in liked["songs"] if s["video_id"] == vid]
+    
+    if existing:
+        liked["songs"] = [s for s in liked["songs"] if s["video_id"] != vid]
+        _write_json(LIKED_FILE, liked)
+        return jsonify({"status": "unliked", "liked": False})
+    else:
+        song = {
+            "video_id": vid,
+            "title": data.get("title", "Unknown"),
+            "artist": data.get("artist", ""),
+            "thumbnail": data.get("thumbnail", ""),
+            "genre": "Unknown",
+            "added_at": time.strftime("%Y-%m-%dT%H:%M:%S")
+        }
+        liked["songs"].insert(0, song)
+        _write_json(LIKED_FILE, liked)
+        return jsonify({"status": "liked", "liked": True})
+
+@app.route("/api/liked")
+def api_liked():
+    genre = request.args.get("genre", "").strip()
+    liked = _read_json(LIKED_FILE, {"songs": []})
+    songs = liked.get("songs", [])
+    if genre and genre.lower() != "all":
+        songs = [s for s in songs if s.get("genre", "Unknown").lower() == genre.lower()]
+    return jsonify({"songs": songs})
+
+@app.route("/api/liked/genres")
+def api_liked_genres():
+    liked = _read_json(LIKED_FILE, {"songs": []})
+    genres = list(set(s.get("genre", "Unknown") for s in liked.get("songs", [])))
+    genres.sort()
+    return jsonify({"genres": genres})
+
+@app.route("/api/is_liked")
+def api_is_liked():
+    vid = request.args.get("video_id", "")
+    liked = _read_json(LIKED_FILE, {"songs": []})
+    is_liked = any(s["video_id"] == vid for s in liked.get("songs", []))
+    return jsonify({"liked": is_liked})
+
+@app.route("/api/liked/genre", methods=["POST"])
+def api_update_genre():
+    """Manually update genre for a liked song."""
+    data = request.get_json(force=True)
+    vid = data.get("video_id", "")
+    genre = data.get("genre", "Unknown")
+    liked = _read_json(LIKED_FILE, {"songs": []})
+    for s in liked["songs"]:
+        if s["video_id"] == vid:
+            s["genre"] = genre
+            break
+    _write_json(LIKED_FILE, liked)
+    return jsonify({"status": "ok"})
+
+# ═══════════════════════ PLAYLISTS ═══════════════════════
+
+@app.route("/api/playlists")
+def api_playlists_list():
+    index = _read_json(PLAYLISTS_INDEX, [])
+    # Add song count to each
+    result = []
+    for p in index:
+        pfile = os.path.join(PLAYLISTS_DIR, f"{p['id']}.json")
+        pdata = _read_json(pfile, {"songs": []})
+        result.append({**p, "song_count": len(pdata.get("songs", []))})
+    return jsonify(result)
+
+@app.route("/api/playlists", methods=["POST"])
+def api_playlists_create():
+    data = request.get_json(force=True)
+    name = data.get("name", "").strip()
+    if not name:
+        return jsonify({"error": "Missing name"}), 400
+    
+    pid = str(uuid.uuid4())[:8]
+    playlist = {
+        "id": pid,
+        "name": name,
+        "cover": "",
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%S")
+    }
+    
+    index = _read_json(PLAYLISTS_INDEX, [])
+    index.append(playlist)
+    _write_json(PLAYLISTS_INDEX, index)
+    _write_json(os.path.join(PLAYLISTS_DIR, f"{pid}.json"), {"id": pid, "name": name, "cover": "", "songs": []})
+    
+    return jsonify(playlist)
+
+@app.route("/api/playlists/<pid>")
+def api_playlist_get(pid):
+    pfile = os.path.join(PLAYLISTS_DIR, f"{pid}.json")
+    pdata = _read_json(pfile, None)
+    if pdata is None:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(pdata)
+
+@app.route("/api/playlists/<pid>", methods=["DELETE"])
+def api_playlist_delete(pid):
+    index = _read_json(PLAYLISTS_INDEX, [])
+    index = [p for p in index if p["id"] != pid]
+    _write_json(PLAYLISTS_INDEX, index)
+    
+    pfile = os.path.join(PLAYLISTS_DIR, f"{pid}.json")
+    if os.path.exists(pfile):
+        os.remove(pfile)
+    return jsonify({"status": "ok"})
+
+@app.route("/api/playlists/<pid>/songs", methods=["POST"])
+def api_playlist_add_song(pid):
+    data = request.get_json(force=True)
+    pfile = os.path.join(PLAYLISTS_DIR, f"{pid}.json")
+    pdata = _read_json(pfile, None)
+    if pdata is None:
+        return jsonify({"error": "Not found"}), 404
+    
+    vid = data.get("video_id", "")
+    if any(s["video_id"] == vid for s in pdata.get("songs", [])):
+        return jsonify({"status": "already_exists"})
+    
+    song = {
+        "video_id": vid,
+        "title": data.get("title", "Unknown"),
+        "artist": data.get("artist", ""),
+        "thumbnail": data.get("thumbnail", ""),
+        "genre": data.get("genre", "Unknown")
+    }
+    pdata["songs"].append(song)
+    _write_json(pfile, pdata)
+    return jsonify({"status": "ok"})
+
+@app.route("/api/playlists/<pid>/songs", methods=["DELETE"])
+def api_playlist_remove_song(pid):
+    data = request.get_json(force=True)
+    vid = data.get("video_id", "")
+    pfile = os.path.join(PLAYLISTS_DIR, f"{pid}.json")
+    pdata = _read_json(pfile, None)
+    if pdata is None:
+        return jsonify({"error": "Not found"}), 404
+    
+    pdata["songs"] = [s for s in pdata["songs"] if s["video_id"] != vid]
+    _write_json(pfile, pdata)
+    return jsonify({"status": "ok"})
+
+@app.route("/api/playlists/<pid>/cover", methods=["POST"])
+def api_playlist_cover(pid):
+    pfile = os.path.join(PLAYLISTS_DIR, f"{pid}.json")
+    pdata = _read_json(pfile, None)
+    if pdata is None:
+        return jsonify({"error": "Not found"}), 404
+    
+    # Check if it's a file upload or a URL
+    if "file" in request.files:
+        f = request.files["file"]
+        ext = os.path.splitext(f.filename)[1] or ".jpg"
+        fname = f"{pid}{ext}"
+        fpath = os.path.join(COVERS_DIR, fname)
+        f.save(fpath)
+        cover_url = f"/api/covers/{fname}"
+    else:
+        data = request.get_json(force=True)
+        cover_url = data.get("url", "")
+    
+    pdata["cover"] = cover_url
+    _write_json(pfile, pdata)
+    
+    # Also update index
+    index = _read_json(PLAYLISTS_INDEX, [])
+    for p in index:
+        if p["id"] == pid:
+            p["cover"] = cover_url
+            break
+    _write_json(PLAYLISTS_INDEX, index)
+    
+    return jsonify({"status": "ok", "cover": cover_url})
+
+@app.route("/api/playlists/<pid>/genre", methods=["POST"])
+def api_playlist_song_genre(pid):
+    """Update genre for a song inside a playlist."""
+    data = request.get_json(force=True)
+    vid = data.get("video_id", "")
+    genre = data.get("genre", "Unknown")
+    pfile = os.path.join(PLAYLISTS_DIR, f"{pid}.json")
+    pdata = _read_json(pfile, None)
+    if pdata is None:
+        return jsonify({"error": "Not found"}), 404
+    for s in pdata["songs"]:
+        if s["video_id"] == vid:
+            s["genre"] = genre
+            break
+    _write_json(pfile, pdata)
+    return jsonify({"status": "ok"})
+
+@app.route("/api/covers/<filename>")
+def api_serve_cover(filename):
+    return send_from_directory(COVERS_DIR, filename)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, threaded=True)
