@@ -12,7 +12,7 @@
   const progressFill = $("#progressFill"), progressThumb = $("#progressThumb"), progressTrack = $("#progressTrack");
   const timeElapsed = $("#timeElapsed"), timeDuration = $("#timeDuration");
   const playPauseBtn = $("#playPauseBtn"), iconPlay = $("#iconPlay"), iconPause = $("#iconPause");
-  const stopBtn = $("#stopBtn"), prevBtn = $("#prevBtn"), nextBtn = $("#nextBtn");
+  const prevBtn = $("#prevBtn"), nextBtn = $("#nextBtn");
   const playerSection = $("#playerSection");
   const suggestionsDropdown = $("#suggestionsDropdown");
   const queueToggleBtn = $("#queueToggleBtn"), queuePanel = $("#queuePanel");
@@ -149,7 +149,7 @@
     if (clientAudio.paused) { clientAudio.play().catch(() => { }); API("/report_state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state: "playing" }) }); }
     else { clientAudio.pause(); API("/report_state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state: "paused" }) }); }
   });
-  stopBtn.addEventListener("click", () => { clientAudio.pause(); clientAudio.currentTime = 0; API("/report_state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state: "stopped" }) }); });
+
   prevBtn.addEventListener("click", () => API("/prev", { method: "POST" }));
   nextBtn.addEventListener("click", () => API("/next", { method: "POST" }));
 
@@ -315,7 +315,7 @@
       if (recents.length > 0) {
         const row = document.createElement("div");
         row.className = "dashboard-row";
-        
+
         let cardsHtml = "";
         recents.forEach(s => {
           const thumbUrl = s.thumbnail || "";
