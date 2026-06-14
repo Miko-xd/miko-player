@@ -4,6 +4,8 @@ import threading
 import json
 import uuid
 import requests
+import re
+import urllib.parse
 
 from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
@@ -20,6 +22,7 @@ PLAYLISTS_DIR = os.path.join(DATA_DIR, "playlists")
 COVERS_DIR = os.path.join(DATA_DIR, "covers")
 LIKED_FILE = os.path.join(DATA_DIR, "liked_songs.json")
 PLAYLISTS_INDEX = os.path.join(PLAYLISTS_DIR, "_index.json")
+HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
 
 for d in [DATA_DIR, PLAYLISTS_DIR, COVERS_DIR]:
     os.makedirs(d, exist_ok=True)
@@ -42,6 +45,8 @@ if not os.path.exists(LIKED_FILE):
     _write_json(LIKED_FILE, {"songs": []})
 if not os.path.exists(PLAYLISTS_INDEX):
     _write_json(PLAYLISTS_INDEX, [])
+if not os.path.exists(HISTORY_FILE):
+    _write_json(HISTORY_FILE, {"songs": []})
 
 @app.after_request
 def add_header(response):
@@ -51,6 +56,12 @@ def add_header(response):
     return response
 
 state_lock = threading.Lock()
+
+# Cache for dashboard recommendations (stale after 10 mins)
+dashboard_cache = {
+    "data": None,
+    "timestamp": 0
+}
 
 # Single global session — no login needed
 session = {
@@ -115,6 +126,121 @@ def _fetch_lyrics(query):
             except Exception: pass
     return parsed
 
+GENRE_MAP = {
+    "hip-hop/rap": "Hip-Hop",
+    "hip-hop": "Hip-Hop",
+    "rap": "Hip-Hop",
+    "dhh": "DHH",
+    "j-pop": "J-Pop",
+    "jpop": "J-Pop",
+    "anime": "J-Pop",
+    "soundtrack": "Soundtracks",
+    "tv soundtrack": "Soundtracks",
+    "indian pop": "Bollywood",
+    "indian": "Bollywood",
+    "bollywood": "Bollywood",
+    "electronic": "Electronic",
+    "dance": "Electronic",
+    "house": "Electronic",
+    "techno": "Electronic",
+    "jazz": "Jazz & Classical",
+    "blues": "Jazz & Classical",
+    "classical": "Jazz & Classical",
+    "rock": "Rock",
+    "metal": "Rock",
+    "pop": "Pop",
+    "lofi": "Lo-Fi",
+    "lo-fi": "Lo-Fi"
+}
+
+def _clean_title_for_search(title):
+    # Remove common video titles suffixes
+    title = re.sub(r'\[.*?\]', '', title) # Remove [...]
+    title = re.sub(r'\(.*?\)', '', title) # Remove (...)
+    title = re.sub(r'\b(official|music|video|audio|lyrics|lyrical|hd|4k|cover|remix|prod by|produced by|prod\. by)\b', '', title, flags=re.IGNORECASE)
+    title = re.sub(r'\s*\|\s*', ' ', title)
+    title = re.sub(r'\s*-\s*', ' ', title)
+    title = re.sub(r'\s+', ' ', title).strip()
+    return title
+
+def _query_itunes_genre(clean_query):
+    encoded_query = urllib.parse.quote(clean_query)
+    url = f"https://itunes.apple.com/search?term={encoded_query}&limit=3&media=music"
+    try:
+        r = requests.get(url, timeout=3)
+        if r.status_code == 200:
+            data = r.json()
+            results = data.get("results", [])
+            if results:
+                return results[0].get("primaryGenreName")
+    except Exception:
+        pass
+    return None
+
+def _guess_genre_from_video(video):
+    title = video.get("title", "").lower()
+    channel = (video.get("channel") or video.get("uploader") or "").lower()
+    tags = [t.lower() for t in video.get("tags", [])] if video.get("tags") else []
+    
+    # Combined search string
+    search_str = f"{title} {channel} {' '.join(tags)}"
+    
+    # 1. High-Confidence Local Matches (e.g. Lo-Fi edits of pop/rock, DHH)
+    if any(k in search_str for k in ["lofi", "lo-fi", "chillhop", "chill vibe", "chilledcow", "lopoly", "chillout", "sleep beats", "study beats"]):
+        return "Lo-Fi"
+    if any(k in search_str for k in ["dhh", "seedhe maut", "kr$na", "raftaar", "divine", "emiway", "mc stan", "yashraj", "hanumankind", "boyblanck", "wolf.cryman", "nanku", "natiq", "karun", "talha anjum", "talhah yunus", "young stunners", "calm", "encore abj"]):
+        return "DHH"
+    if any(k in search_str for k in ["yoasobi", "vocaloid", "ado", "eve", "radwimps", "kenshi yonezu", "fujii kaze", "lisa"]):
+        return "J-Pop"
+
+    # 2. iTunes API Match
+    query = _clean_title_for_search(video.get("title", ""))
+    itunes_genre = None
+    if query:
+        if channel and channel.lower() not in query.lower():
+            itunes_genre = _query_itunes_genre(f"{query} {channel}")
+        if not itunes_genre:
+            itunes_genre = _query_itunes_genre(query)
+        
+    if itunes_genre:
+        itunes_genre_lower = itunes_genre.lower()
+        # Try to map iTunes genre to our standardized genres
+        for k, standard in GENRE_MAP.items():
+            if k in itunes_genre_lower:
+                return standard
+        return itunes_genre
+
+    # 3. Fallback Keyword Match (Broader keywords)
+    if any(k in search_str for k in ["jpop", "j-pop", "anime", "japanese"]):
+        return "J-Pop"
+    if any(k in search_str for k in ["bollywood", "hindi", "punjabi", "t-series", "zeemusic", "saregama", "arijit", "badshah", "nehakakkar", "indipop", "shreya ghoshal", "sonu nigam", "jubin nautiyal"]):
+        return "Bollywood"
+    if any(k in search_str for k in ["hiphop", "hip-hop", "rap", "rapper", "trap", "eminem", "drake", "lofi rap", "kendrick"]):
+        return "Hip-Hop"
+    if any(k in search_str for k in ["rock", "metal", "grunge", "punk", "linkin park", "nirvana", "queen", "ac/dc", "led zeppelin"]):
+        return "Rock"
+    if any(k in search_str for k in ["edm", "electronic", "synthwave", "techno", "house", "remix", "dubstep", "alan walker", "marshmello"]):
+        return "Electronic"
+    if any(k in search_str for k in ["jazz", "blues", "classical", "piano", "orchestra", "violin", "mozart", "beethoven"]):
+        return "Jazz & Classical"
+    if any(k in search_str for k in ["pop", "billboard", "taylor swift", "ariana grande", "justin bieber", "dualipa", "bts", "kpop", "k-pop"]):
+        return "Pop"
+        
+    # Default fallback
+    if video.get("genre"):
+        g = video["genre"]
+        if g and g.strip().lower() not in ["music", "unknown", "none"]:
+            return g.strip()
+            
+    if video.get("categories"):
+        cat = video["categories"][0]
+        if cat and cat.strip().lower() not in ["music", "unknown", "none"]:
+            return cat.strip()
+            
+    return "Pop"
+
+
+
 def _play_video_obj(video, is_prefetched=False):
     raw_title = video.get("title", "Unknown")
     artist = video.get("artist", "") or video.get("channel", "")
@@ -147,6 +273,52 @@ def _play_video_obj(video, is_prefetched=False):
             "position": 0,
             "lyrics": []
         })
+    
+    # Append to playback history
+    try:
+        # Resolve song genre
+        genre = "Unknown"
+        # 1. Check if liked
+        liked = _read_json(LIKED_FILE, {"songs": []})
+        for s in liked.get("songs", []):
+            if s.get("video_id") == video_id and s.get("genre"):
+                genre = s["genre"]
+                break
+        
+        # 2. Check playlists
+        if genre == "Unknown":
+            for pfile in os.listdir(PLAYLISTS_DIR):
+                if pfile.endswith(".json") and pfile != "_index.json":
+                    pdata = _read_json(os.path.join(PLAYLISTS_DIR, pfile), {"songs": []})
+                    for s in pdata.get("songs", []):
+                        if s.get("video_id") == video_id and s.get("genre"):
+                            genre = s["genre"]
+                            break
+                    if genre != "Unknown":
+                        break
+        
+        # 3. Check video categories/genres
+        if genre == "Unknown" or genre == "Music":
+            genre = _guess_genre_from_video(video)
+
+        hist = _read_json(HISTORY_FILE, {"songs": []})
+        songs = hist.get("songs", [])
+        songs = [s for s in songs if s.get("video_id") != video_id]
+        songs.insert(0, {
+            "video_id": video_id,
+            "title": raw_title,
+            "artist": artist,
+            "thumbnail": thumb,
+            "genre": genre
+        })
+        hist["songs"] = songs[:30]  # Keep last 30 played songs
+        _write_json(HISTORY_FILE, hist)
+        
+        # Update dashboard cache recently played list instantly
+        if dashboard_cache["data"] is not None:
+            dashboard_cache["data"]["recently_played"] = hist["songs"]
+    except Exception:
+        pass
     
     def fetch_l():
         lyrics = _fetch_lyrics(lyrics_q)
@@ -432,6 +604,108 @@ def api_is_liked():
     liked = _read_json(LIKED_FILE, {"songs": []})
     is_liked = any(s["video_id"] == vid for s in liked.get("songs", []))
     return jsonify({"liked": is_liked})
+
+def _search_recommendations(query, count=8):
+    ydl_opts = {
+        "quiet": True, "noplaylist": True, "extract_flat": True, "skip_download": True,
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+    }
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"ytsearch{count}:{query}", download=False)
+        results = []
+        for entry in info.get("entries", []):
+            if entry.get("id"):
+                results.append({
+                    "video_id": entry.get("id", ""),
+                    "title": entry.get("title", "Unknown"),
+                    "artist": entry.get("channel") or entry.get("uploader") or "",
+                    "thumbnail": entry.get("thumbnail") or f"https://i.ytimg.com/vi/{entry.get('id', '')}/hqdefault.jpg"
+                })
+        return results
+    except Exception:
+        return []
+
+def _generate_dashboard_data():
+    hist = _read_json(HISTORY_FILE, {"songs": []})
+    liked = _read_json(LIKED_FILE, {"songs": []})
+    
+    # Combine history and liked songs to analyze tastes
+    all_user_songs = hist.get("songs", []) + liked.get("songs", [])
+    
+    # Count genres and track artists
+    genre_counts = {}
+    genre_artists = {}
+    
+    for s in all_user_songs:
+        g = s.get("genre", "Unknown")
+        if not g or g == "Unknown":
+            continue
+        genre_counts[g] = genre_counts.get(g, 0) + 1
+        
+        artist = s.get("artist")
+        if artist:
+            if g not in genre_artists:
+                genre_artists[g] = {}
+            genre_artists[g][artist] = genre_artists[g].get(artist, 0) + 1
+            
+    # Sort genres by frequency
+    sorted_genres = sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)
+    top_genres = [g for g, count in sorted_genres[:3]]
+    
+    genre_mixes = []
+    
+    # Fallback to default genres if user has no genre history
+    if not top_genres:
+        top_genres = ["Pop", "Lo-Fi"]
+        
+    for g in top_genres:
+        fav_artist = ""
+        if g in genre_artists and genre_artists[g]:
+            sorted_artists = sorted(genre_artists[g].items(), key=lambda x: x[1], reverse=True)
+            fav_artist = sorted_artists[0][0]
+            
+        # Build search query based on favorite artist + genre
+        if fav_artist:
+            query = f"{fav_artist} {g} mix"
+        else:
+            query = f"{g} music playlist official"
+            
+        songs = _search_recommendations(query, count=8)
+        if songs:
+            genre_mixes.append({
+                "genre": g,
+                "title": f"{g} Mix",
+                "songs": songs
+            })
+            
+    return {
+        "recently_played": hist.get("songs", []),
+        "genre_mixes": genre_mixes
+    }
+
+@app.route("/api/dashboard")
+def api_dashboard():
+    global dashboard_cache
+    now = time.time()
+    # Cache valid for 10 minutes (600 seconds)
+    if dashboard_cache["data"] is not None and (now - dashboard_cache["timestamp"]) < 600:
+        return jsonify(dashboard_cache["data"])
+        
+    try:
+        data = _generate_dashboard_data()
+        dashboard_cache = {
+            "data": data,
+            "timestamp": now
+        }
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/history")
+def api_history():
+    hist = _read_json(HISTORY_FILE, {"songs": []})
+    return jsonify(hist)
 
 @app.route("/api/liked/genre", methods=["POST"])
 def api_update_genre():

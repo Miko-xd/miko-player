@@ -13,7 +13,7 @@
   const timeElapsed = $("#timeElapsed"), timeDuration = $("#timeDuration");
   const playPauseBtn = $("#playPauseBtn"), iconPlay = $("#iconPlay"), iconPause = $("#iconPause");
   const stopBtn = $("#stopBtn"), prevBtn = $("#prevBtn"), nextBtn = $("#nextBtn");
-  const volumeSlider = $("#volumeSlider"), playerSection = $("#playerSection");
+  const playerSection = $("#playerSection");
   const suggestionsDropdown = $("#suggestionsDropdown");
   const queueToggleBtn = $("#queueToggleBtn"), queuePanel = $("#queuePanel");
   const closeQueueBtn = $("#closeQueueBtn"), queueList = $("#queueList");
@@ -99,7 +99,7 @@
 
   queueToggleBtn.addEventListener("click", () => queuePanel.classList.add("open"));
   closeQueueBtn.addEventListener("click", () => queuePanel.classList.remove("open"));
-  sidebarToggleBtn.addEventListener("click", () => { sidebarPanel.classList.add("open"); if (window.MikoLibrary) window.MikoLibrary.renderMain(); });
+  if (sidebarToggleBtn) sidebarToggleBtn.addEventListener("click", () => { sidebarPanel.classList.add("open"); if (window.MikoLibrary) window.MikoLibrary.renderMain(); });
   closeSidebarBtn.addEventListener("click", () => sidebarPanel.classList.remove("open"));
 
   function updateSuggestionSelection(items) {
@@ -128,7 +128,15 @@
 
   function hideSuggestions() { suggestionsDropdown.classList.remove("visible"); selectedSuggestionIdx = -1; }
   function escapeHtml(str) { const d = document.createElement("div"); d.textContent = str; return d.innerHTML; }
-  document.addEventListener("click", (e) => { if (!e.target.closest(".search-section")) hideSuggestions(); });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".search-section")) hideSuggestions();
+    if (queuePanel.classList.contains("open") && !e.target.closest("#queuePanel") && !e.target.closest("#queueToggleBtn")) {
+      queuePanel.classList.remove("open");
+    }
+    if (sidebarPanel.classList.contains("open") && !e.target.closest("#sidebarPanel") && (!sidebarToggleBtn || !e.target.closest("#sidebarToggleBtn"))) {
+      sidebarPanel.classList.remove("open");
+    }
+  });
 
   document.addEventListener("keydown", (e) => {
     const tag = document.activeElement?.tagName; const inInput = tag === "INPUT" || tag === "TEXTAREA";
@@ -144,7 +152,7 @@
   stopBtn.addEventListener("click", () => { clientAudio.pause(); clientAudio.currentTime = 0; API("/report_state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state: "stopped" }) }); });
   prevBtn.addEventListener("click", () => API("/prev", { method: "POST" }));
   nextBtn.addEventListener("click", () => API("/next", { method: "POST" }));
-  volumeSlider.addEventListener("input", () => { clientAudio.volume = +volumeSlider.value / 100; });
+
 
   // Like button
   likeBtn.addEventListener("click", async () => {
@@ -226,7 +234,12 @@
   function updateUI(data) {
     if (!data || !data.current_song) return;
     const d = data.current_song;
-    if (data.video_id && data.video_id !== lastPlayedVideoId) { lastPlayedVideoId = data.video_id; clientAudio.src = `/api/stream?t=${Date.now()}`; clientAudio.play().catch(e => console.warn("Autoplay prevented:", e)); }
+    if (data.video_id && data.video_id !== lastPlayedVideoId) {
+      lastPlayedVideoId = data.video_id;
+      clientAudio.src = `/api/stream?t=${Date.now()}`;
+      clientAudio.play().catch(e => console.warn("Autoplay prevented:", e));
+      fetchAndRenderDashboard();
+    }
     if (d.state === "playing" && clientAudio.paused) { clientAudio.play().catch(() => { }); } else if (d.state !== "playing" && !clientAudio.paused) { clientAudio.pause(); }
     songTitle.textContent = d.title || "Search a song to play"; songArtist.textContent = d.artist || "—";
 
@@ -279,7 +292,7 @@
     if (idx >= 0 && lines[idx]) { const panel = document.getElementById("lyricsPanel"); const lineTop = lines[idx].offsetTop; const panelH = panel.clientHeight; const scrollTarget = lineTop - panelH / 2 + lines[idx].clientHeight / 2; lyricsScroll.style.transform = `translateY(-${Math.max(0, scrollTarget)}px)`; }
   }
 
-  clientAudio.volume = +volumeSlider.value / 100;
+  clientAudio.volume = 0.8;
   if ("mediaSession" in navigator) {
     navigator.mediaSession.setActionHandler("play", () => playPauseBtn.click());
     navigator.mediaSession.setActionHandler("pause", () => playPauseBtn.click());
@@ -289,7 +302,101 @@
     navigator.mediaSession.setActionHandler("previoustrack", () => prevBtn.click());
   }
 
+  async function fetchAndRenderDashboard() {
+    try {
+      const data = await API("/dashboard");
+      const container = document.getElementById("dashboardRows");
+      if (!container) return;
+
+      container.innerHTML = "";
+
+      // 1. Render Recently Played
+      const recents = data.recently_played || [];
+      if (recents.length > 0) {
+        const row = document.createElement("div");
+        row.className = "dashboard-row";
+        
+        let cardsHtml = "";
+        recents.forEach(s => {
+          const thumbUrl = s.thumbnail || "";
+          cardsHtml += `
+            <div class="history-card" data-vid="${s.video_id}">
+              <div class="history-card-img-wrap">
+                <img class="history-card-img" src="${thumbUrl}" alt="" loading="lazy" />
+              </div>
+              <div class="history-card-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</div>
+              <div class="history-card-artist" title="${escapeHtml(s.artist || "Unknown")}">${escapeHtml(s.artist || "Unknown")}</div>
+            </div>
+          `;
+        });
+
+        row.innerHTML = `
+          <h3 class="section-title">Recently Played</h3>
+          <div class="history-cards">${cardsHtml}</div>
+          <div class="row-divider"></div>
+        `;
+
+        row.querySelectorAll(".history-card").forEach(card => {
+          const vid = card.dataset.vid;
+          const title = card.querySelector(".history-card-title").textContent;
+          card.addEventListener("click", () => {
+            playSong(`https://www.youtube.com/watch?v=${vid}`, title);
+          });
+        });
+
+        container.appendChild(row);
+      }
+
+      // 2. Render Genre Mixes
+      const mixes = data.genre_mixes || [];
+      mixes.forEach(mix => {
+        if (!mix.songs || mix.songs.length === 0) return;
+
+        const row = document.createElement("div");
+        row.className = "dashboard-row";
+
+        let cardsHtml = "";
+        mix.songs.forEach(s => {
+          const thumbUrl = s.thumbnail || "";
+          cardsHtml += `
+            <div class="history-card" data-vid="${s.video_id}">
+              <div class="history-card-img-wrap">
+                <img class="history-card-img" src="${thumbUrl}" alt="" loading="lazy" />
+              </div>
+              <div class="history-card-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</div>
+              <div class="history-card-artist" title="${escapeHtml(s.artist || "Unknown")}">${escapeHtml(s.artist || "Unknown")}</div>
+            </div>
+          `;
+        });
+
+        row.innerHTML = `
+          <h3 class="section-title">${escapeHtml(mix.title)}</h3>
+          <div class="history-cards">${cardsHtml}</div>
+          <div class="row-divider"></div>
+        `;
+
+        row.querySelectorAll(".history-card").forEach(card => {
+          const vid = card.dataset.vid;
+          const title = card.querySelector(".history-card-title").textContent;
+          card.addEventListener("click", () => {
+            playSong(`https://www.youtube.com/watch?v=${vid}`, title);
+          });
+        });
+
+        container.appendChild(row);
+      });
+
+      if (recents.length === 0 && mixes.length === 0) {
+        container.innerHTML = '<div style="color:var(--text-dim);font-size:0.85rem;padding:20px 0;text-align:center;">Play some music or add to library to get recommendations!</div>';
+      }
+
+    } catch (err) {
+      console.error("Error loading dashboard:", err);
+    }
+  }
+
   startPolling();
   clientAudio.src = `/api/stream`;
   searchInput.focus();
+  fetchAndRenderDashboard();
 })();

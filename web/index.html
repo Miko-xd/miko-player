@@ -30,11 +30,6 @@
 
     <!-- HEADER -->
     <header class="header" id="header">
-      <button id="sidebarToggleBtn" class="sidebar-toggle-btn" title="Library">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M4 6h16M4 12h10M4 18h16" />
-        </svg>
-      </button>
       <div class="logo">
         <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="3" />
@@ -56,123 +51,127 @@
       </button>
     </header>
 
-    <!-- SEARCH BAR -->
-    <section class="search-section" id="searchSection">
-      <div class="search-wrapper">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8" />
-          <path d="m21 21-4.3-4.3" />
-        </svg>
-        <input type="text" id="searchInput" class="search-input" placeholder="What do you want to listen to?"
-          autocomplete="off" />
-        <button id="searchBtn" class="search-btn" title="Search & Play">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M8 5v14l11-7z" />
-          </svg>
-        </button>
-      </div>
-      <div class="suggestions-dropdown" id="suggestionsDropdown"></div>
-    </section>
+    <!-- MAIN CONTENT WRAPPER -->
+    <main class="main-content">
+      <!-- PLAYLIST ICONS SIDEBAR -->
+      <div class="playlist-icons-sidebar" id="playlistIconsSidebar"></div>
 
-    <!-- NOW PLAYING -->
-    <section class="player-section" id="playerSection">
-      <div class="artwork-container" id="artworkContainer">
-        <div class="artwork-glow" id="artworkGlow"></div>
-        <div class="artwork" id="artwork">
-          <div class="artwork-placeholder" id="artworkPlaceholder">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M9 18V5l12-2v13" />
-              <circle cx="6" cy="18" r="3" />
-              <circle cx="18" cy="16" r="3" />
+      <!-- LEFT/CENTER CONTENT -->
+      <div class="left-center-content">
+        <!-- SEARCH BAR -->
+        <section class="search-section" id="searchSection">
+          <div class="search-wrapper">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.3-4.3" />
             </svg>
+            <input type="text" id="searchInput" class="search-input" placeholder="What do you want to listen to?"
+              autocomplete="off" />
+            <button id="searchBtn" class="search-btn" title="Search & Play">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </button>
           </div>
-          <img id="artworkImg" class="artwork-img" alt="" />
-        </div>
-        <div class="disc-ring" id="discRing"></div>
-      </div>
+          <div class="suggestions-dropdown" id="suggestionsDropdown"></div>
+        </section>
 
-      <div class="song-info">
-        <h1 class="song-title" id="songTitle">Search a song to play</h1>
-        <p class="song-artist" id="songArtist">—</p>
-      </div>
-
-      <div class="lyrics-panel" id="lyricsPanel">
-        <div class="lyrics-scroll" id="lyricsScroll">
-          <p class="lyrics-placeholder" id="lyricsPlaceholder">Lyrics will appear here…</p>
+        <!-- DYNAMIC DASHBOARD SECTIONS -->
+        <div class="dashboard-rows" id="dashboardRows">
+          <!-- Dynamic rows (history and genre mixes) injected by JS -->
         </div>
       </div>
 
-      <!-- Progress Bar -->
-      <div class="progress-section">
-        <span class="time-label" id="timeElapsed">0:00</span>
-        <div class="progress-track" id="progressTrack">
-          <div class="progress-fill" id="progressFill"></div>
-          <div class="progress-thumb" id="progressThumb"></div>
+      <!-- NOW PLAYING -->
+      <section class="player-section" id="playerSection">
+        <div class="artwork-container" id="artworkContainer">
+          <div class="artwork-glow" id="artworkGlow"></div>
+          <div class="artwork" id="artwork">
+            <div class="artwork-placeholder" id="artworkPlaceholder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 18V5l12-2v13" />
+                <circle cx="6" cy="18" r="3" />
+                <circle cx="18" cy="16" r="3" />
+              </svg>
+            </div>
+            <img id="artworkImg" class="artwork-img" alt="" />
+          </div>
+          <div class="disc-ring" id="discRing"></div>
         </div>
-        <span class="time-label" id="timeDuration">0:00</span>
-      </div>
 
-      <!-- Controls with Like & Add buttons -->
-      <div class="controls">
-        <button class="ctrl-btn ctrl-action" id="likeBtn" title="Like">
-          <svg id="iconHeartOutline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path
-              d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-          </svg>
-          <svg id="iconHeartFilled" viewBox="0 0 24 24" fill="currentColor" style="display:none">
-            <path
-              d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-          </svg>
-        </button>
-        <button class="ctrl-btn" id="stopBtn" title="Stop">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <rect x="6" y="6" width="12" height="12" rx="2" />
-          </svg>
-        </button>
-        <button class="ctrl-btn" id="prevBtn" title="Previous Track">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
-          </svg>
-        </button>
-        <button class="ctrl-btn ctrl-main" id="playPauseBtn" title="Play / Pause">
-          <svg id="iconPlay" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M8 5v14l11-7z" />
-          </svg>
-          <svg id="iconPause" viewBox="0 0 24 24" fill="currentColor" style="display:none">
-            <rect x="6" y="5" width="4" height="14" rx="1" />
-            <rect x="14" y="5" width="4" height="14" rx="1" />
-          </svg>
-        </button>
-        <button class="ctrl-btn" id="nextBtn" title="Next Track">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
-          </svg>
-        </button>
-        <button class="ctrl-btn ctrl-action" id="addToPlaylistBtn" title="Add to Playlist">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-        </button>
-        <div class="volume-wrap">
-          <button class="ctrl-btn" id="volumeBtn" title="Volume">
-            <svg id="iconVolume" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-              <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-              <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+        <div class="song-info">
+          <h1 class="song-title" id="songTitle">Search a song to play</h1>
+          <p class="song-artist" id="songArtist">—</p>
+        </div>
+
+        <div class="lyrics-panel" id="lyricsPanel">
+          <div class="lyrics-scroll" id="lyricsScroll">
+            <p class="lyrics-placeholder" id="lyricsPlaceholder">Lyrics will appear here…</p>
+          </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="progress-section">
+          <span class="time-label" id="timeElapsed">0:00</span>
+          <div class="progress-track" id="progressTrack">
+            <div class="progress-fill" id="progressFill"></div>
+            <div class="progress-thumb" id="progressThumb"></div>
+          </div>
+          <span class="time-label" id="timeDuration">0:00</span>
+        </div>
+
+        <!-- Controls with Like & Add buttons -->
+        <div class="controls">
+          <button class="ctrl-btn ctrl-action" id="likeBtn" title="Like">
+            <svg id="iconHeartOutline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path
+                d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+            </svg>
+            <svg id="iconHeartFilled" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+              <path
+                d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
             </svg>
           </button>
-          <input type="range" id="volumeSlider" class="volume-slider" min="0" max="100" value="80" />
+          <button class="ctrl-btn" id="stopBtn" title="Stop">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="6" width="12" height="12" rx="2" />
+            </svg>
+          </button>
+          <button class="ctrl-btn" id="prevBtn" title="Previous Track">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+            </svg>
+          </button>
+          <button class="ctrl-btn ctrl-main" id="playPauseBtn" title="Play / Pause">
+            <svg id="iconPlay" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            <svg id="iconPause" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+              <rect x="6" y="5" width="4" height="14" rx="1" />
+              <rect x="14" y="5" width="4" height="14" rx="1" />
+            </svg>
+          </button>
+          <button class="ctrl-btn" id="nextBtn" title="Next Track">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+            </svg>
+          </button>
+          <button class="ctrl-btn ctrl-action" id="addToPlaylistBtn" title="Add to Playlist">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
         </div>
-      </div>
 
-      <!-- Play Mode Toggle -->
-      <div class="play-mode-section">
-        <button class="play-mode-btn active" id="playModeBtn" title="Play Mode">
-          <span id="playModeIcon">✨</span>
-          <span id="playModeLabel">Smart Shuffle</span>
-        </button>
-      </div>
-    </section>
+        <!-- Play Mode Toggle -->
+        <div class="play-mode-section">
+          <button class="play-mode-btn active" id="playModeBtn" title="Play Mode">
+            <span id="playModeIcon">✨</span>
+            <span id="playModeLabel">Smart Shuffle</span>
+          </button>
+        </div>
+      </section>
+    </main>
 
     <!-- QUEUE PANEL -->
     <section class="queue-panel" id="queuePanel">

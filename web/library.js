@@ -11,6 +11,10 @@
   async function renderMain() {
     const [playlists, likedData] = await Promise.all([API("/playlists"), API("/liked")]);
     const likedCount = likedData.songs ? likedData.songs.length : 0;
+    
+    // Render left icon bar
+    renderIconsSidebar(playlists, likedCount);
+
     let h = `<div class="sidebar-liked-card" id="sbLikedCard"><div class="sidebar-liked-icon">❤️</div><div class="sidebar-liked-info"><h4>Liked Songs</h4><p>${likedCount} song${likedCount !== 1 ? "s" : ""}</p></div></div>`;
     h += `<div style="margin:12px 0 6px;font-size:0.78rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;">Playlists</div>`;
     playlists.forEach(p => {
@@ -24,6 +28,51 @@
       el.addEventListener("click", () => renderPlaylistDetail(el.dataset.pid));
     });
     document.getElementById("sbCreateBtn").addEventListener("click", () => window.MikoCreatePlaylist());
+  }
+
+  function renderIconsSidebar(playlists, likedCount) {
+    const container = document.getElementById("playlistIconsSidebar");
+    if (!container) return;
+
+    let html = `
+      <div class="playlist-icon-item" id="iconLikedSongs" data-tooltip="Liked Songs" style="color: var(--rose);">
+        ❤️
+      </div>
+    `;
+
+    playlists.forEach(p => {
+      const cover = p.cover ? `<img src="${p.cover}" alt="">` : "🎵";
+      html += `
+        <div class="playlist-icon-item" data-pid="${p.id}" data-tooltip="${esc(p.name)}">
+          ${cover}
+        </div>
+      `;
+    });
+
+    html += `
+      <div class="playlist-icon-item" id="iconCreatePlaylist" data-tooltip="Create Playlist" style="color: var(--accent);">
+        ➕
+      </div>
+    `;
+
+    container.innerHTML = html;
+
+    // Listeners
+    document.getElementById("iconLikedSongs").addEventListener("click", () => {
+      document.getElementById("sidebarPanel").classList.add("open");
+      renderLiked();
+    });
+
+    container.querySelectorAll(".playlist-icon-item[data-pid]").forEach(el => {
+      el.addEventListener("click", () => {
+        document.getElementById("sidebarPanel").classList.add("open");
+        renderPlaylistDetail(el.dataset.pid);
+      });
+    });
+
+    document.getElementById("iconCreatePlaylist").addEventListener("click", () => {
+      window.MikoCreatePlaylist();
+    });
   }
 
   async function renderLiked(filterGenre) {
@@ -209,4 +258,7 @@
   }
 
   window.MikoLibrary = { renderMain };
+  
+  // Auto-render library on load to show left icon bar
+  setTimeout(renderMain, 100);
 })();
