@@ -665,18 +665,33 @@ def _generate_dashboard_data():
             sorted_artists = sorted(genre_artists[g].items(), key=lambda x: x[1], reverse=True)
             fav_artist = sorted_artists[0][0]
             
-        # Build search query based on favorite artist + genre
+        import random
+        # Build search query based on favorite artist + genre with template variations
         if fav_artist:
-            query = f"{fav_artist} {g} mix"
+            templates = [
+                f"{fav_artist} {g} mix",
+                f"{fav_artist} songs playlist",
+                f"{fav_artist} hits",
+                f"{fav_artist} {g} songs"
+            ]
+            query = random.choice(templates)
         else:
-            query = f"{g} music playlist official"
+            templates = [
+                f"{g} music playlist official",
+                f"best {g} songs playlist",
+                f"{g} mix playlist",
+                f"popular {g} music tracks"
+            ]
+            query = random.choice(templates)
             
-        songs = _search_recommendations(query, count=8)
+        # Search 20 recommendations and randomly select 8 to ensure variety
+        songs = _search_recommendations(query, count=20)
         if songs:
+            sampled_songs = random.sample(songs, min(len(songs), 8))
             genre_mixes.append({
                 "genre": g,
                 "title": f"{g} Mix",
-                "songs": songs
+                "songs": sampled_songs
             })
             
     return {
@@ -688,8 +703,11 @@ def _generate_dashboard_data():
 def api_dashboard():
     global dashboard_cache
     now = time.time()
-    # Cache valid for 10 minutes (600 seconds)
-    if dashboard_cache["data"] is not None and (now - dashboard_cache["timestamp"]) < 600:
+    
+    force_refresh = request.args.get("refresh", "false").lower() == "true"
+    
+    # Cache valid for 10 minutes (600 seconds) if not forced
+    if not force_refresh and dashboard_cache["data"] is not None and (now - dashboard_cache["timestamp"]) < 600:
         return jsonify(dashboard_cache["data"])
         
     try:

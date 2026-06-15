@@ -110,7 +110,7 @@
   searchInput.addEventListener("input", () => { clearTimeout(searchDebounce); const q = searchInput.value.trim(); if (!q) { hideSuggestions(); return; } searchDebounce = setTimeout(() => fetchSuggestions(q), 500); });
 
   async function fetchSuggestions(q) {
-    suggestionsDropdown.innerHTML = '<div class="suggestions-loading">Searching YouTube…</div>'; suggestionsDropdown.classList.add("visible");
+    suggestionsDropdown.innerHTML = '<div class="suggestions-loading">Searching…</div>'; suggestionsDropdown.classList.add("visible");
     try { const results = await API(`/search?q=${encodeURIComponent(q)}`); if (!Array.isArray(results) || results.length === 0) { suggestionsDropdown.innerHTML = '<div class="suggestions-loading">No results found</div>'; currentSuggestions = []; return; } currentSuggestions = results; renderSuggestions(results); } catch { currentSuggestions = []; hideSuggestions(); }
   }
 
@@ -237,7 +237,9 @@
     if (data.video_id && data.video_id !== lastPlayedVideoId) {
       lastPlayedVideoId = data.video_id;
       clientAudio.src = `/api/stream?t=${Date.now()}`;
-      clientAudio.play().catch(e => console.warn("Autoplay prevented:", e));
+      if (d.state === "playing") {
+        clientAudio.play().catch(e => console.warn("Autoplay prevented:", e));
+      }
       fetchAndRenderDashboard();
     }
     if (d.state === "playing" && clientAudio.paused) { clientAudio.play().catch(() => { }); } else if (d.state !== "playing" && !clientAudio.paused) { clientAudio.pause(); }
@@ -302,9 +304,10 @@
     navigator.mediaSession.setActionHandler("previoustrack", () => prevBtn.click());
   }
 
-  async function fetchAndRenderDashboard() {
+  async function fetchAndRenderDashboard(forceRefresh = false) {
     try {
-      const data = await API("/dashboard");
+      const url = forceRefresh ? "/dashboard?refresh=true" : "/dashboard";
+      const data = await API(url);
       const container = document.getElementById("dashboardRows");
       if (!container) return;
 
@@ -398,5 +401,5 @@
   startPolling();
   clientAudio.src = `/api/stream`;
   searchInput.focus();
-  fetchAndRenderDashboard();
+  fetchAndRenderDashboard(true);
 })();
