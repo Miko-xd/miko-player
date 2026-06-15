@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   MIKO PLAYER  ·  Library (Playlists, Liked Songs, Sidebar)
+   MIKO PLAYER  ·  Library (Playlists, Liked Songs, Widescreen center)
    ═══════════════════════════════════════════════════════════════ */
 (() => {
   "use strict";
@@ -7,6 +7,21 @@
   const esc = window.MikoEscape;
   const fmt = window.MikoFormatTime;
   const sidebarContent = document.getElementById("sidebarContent");
+  const playlistView = document.getElementById("playlistView");
+  const homeView = document.getElementById("homeView");
+
+  function showPlaylistView() {
+    if (homeView) homeView.style.display = "none";
+    if (playlistView) playlistView.style.display = "flex";
+  }
+
+  function showHomeView() {
+    if (playlistView) playlistView.style.display = "none";
+    if (homeView) homeView.style.display = "block";
+  }
+
+  // Expose showHomeView globally so app.js can trigger it if needed
+  window.MikoShowHomeView = showHomeView;
 
   async function renderMain() {
     const [playlists, likedData] = await Promise.all([API("/playlists"), API("/liked")]);
@@ -15,19 +30,21 @@
     // Render left icon bar
     renderIconsSidebar(playlists, likedCount);
 
-    let h = `<div class="sidebar-liked-card" id="sbLikedCard"><div class="sidebar-liked-icon">❤️</div><div class="sidebar-liked-info"><h4>Liked Songs</h4><p>${likedCount} song${likedCount !== 1 ? "s" : ""}</p></div></div>`;
-    h += `<div style="margin:12px 0 6px;font-size:0.78rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;">Playlists</div>`;
-    playlists.forEach(p => {
-      const cover = p.cover ? `<img src="${p.cover}" alt="">` : "🎵";
-      h += `<div class="sidebar-playlist-card" data-pid="${p.id}"><div class="sidebar-playlist-cover">${cover}</div><div class="sidebar-playlist-info"><h4>${esc(p.name)}</h4><p>${p.song_count || 0} song${(p.song_count || 0) !== 1 ? "s" : ""}</p></div></div>`;
-    });
-    h += `<button class="sidebar-create-btn" id="sbCreateBtn">➕ Create Playlist</button>`;
-    sidebarContent.innerHTML = h;
-    document.getElementById("sbLikedCard").addEventListener("click", () => renderLiked());
-    sidebarContent.querySelectorAll(".sidebar-playlist-card").forEach(el => {
-      el.addEventListener("click", () => renderPlaylistDetail(el.dataset.pid));
-    });
-    document.getElementById("sbCreateBtn").addEventListener("click", () => window.MikoCreatePlaylist());
+    if (sidebarContent) {
+      let h = `<div class="sidebar-liked-card" id="sbLikedCard"><div class="sidebar-liked-icon">❤️</div><div class="sidebar-liked-info"><h4>Liked Songs</h4><p>${likedCount} song${likedCount !== 1 ? "s" : ""}</p></div></div>`;
+      h += `<div style="margin:12px 0 6px;font-size:0.78rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;">Playlists</div>`;
+      playlists.forEach(p => {
+        const cover = p.cover ? `<img src="${p.cover}" alt="">` : "🎵";
+        h += `<div class="sidebar-playlist-card" data-pid="${p.id}"><div class="sidebar-playlist-cover">${cover}</div><div class="sidebar-playlist-info"><h4>${esc(p.name)}</h4><p>${p.song_count || 0} song${(p.song_count || 0) !== 1 ? "s" : ""}</p></div></div>`;
+      });
+      h += `<button class="sidebar-create-btn" id="sbCreateBtn">➕ Create Playlist</button>`;
+      sidebarContent.innerHTML = h;
+      document.getElementById("sbLikedCard").addEventListener("click", () => renderLiked());
+      sidebarContent.querySelectorAll(".sidebar-playlist-card").forEach(el => {
+        el.addEventListener("click", () => renderPlaylistDetail(el.dataset.pid));
+      });
+      document.getElementById("sbCreateBtn").addEventListener("click", () => window.MikoCreatePlaylist());
+    }
   }
 
   function renderIconsSidebar(playlists, likedCount) {
@@ -59,13 +76,11 @@
 
     // Listeners
     document.getElementById("iconLikedSongs").addEventListener("click", () => {
-      document.getElementById("sidebarPanel").classList.add("open");
       renderLiked();
     });
 
     container.querySelectorAll(".playlist-icon-item[data-pid]").forEach(el => {
       el.addEventListener("click", () => {
-        document.getElementById("sidebarPanel").classList.add("open");
         renderPlaylistDetail(el.dataset.pid);
       });
     });
@@ -80,93 +95,287 @@
     const [likedData, genresData] = await Promise.all([API(`/liked${gParam}`), API("/liked/genres")]);
     const songs = likedData.songs || [];
     const genres = genresData.genres || [];
-    let h = `<div class="sidebar-detail-header"><button class="sidebar-back-btn" id="sbBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button><h3 style="font-family:var(--font-display);font-weight:700;font-size:1.1rem;">Liked Songs</h3></div>`;
+    
+    showPlaylistView();
+
+    let h = `
+      <button class="playlist-back-btn" id="sbBack">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+        Back to Home
+      </button>
+      
+      <div class="playlist-header">
+        <div class="playlist-cover-art" style="background: linear-gradient(135deg, #311042, #7c2d12);">
+          <span style="font-size: 3.5rem;">❤️</span>
+        </div>
+        <div class="playlist-header-info">
+          <span class="playlist-badge">Playlist</span>
+          <h1 class="playlist-name">Liked Songs</h1>
+          <p class="playlist-metadata">
+            <span class="playlist-creator">Miko</span> • ${songs.length} song${songs.length !== 1 ? "s" : ""}
+          </p>
+        </div>
+      </div>
+    `;
+
+    // Action bar
+    h += `
+      <div class="playlist-actions-bar">
+        ${songs.length > 0 ? `
+          <button class="play-playlist-btn" id="sbPlayLikedList" title="Play All">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <button class="playlist-action-btn" id="sbShuffleLiked" title="Shuffle">🔀 Shuffle</button>
+        ` : ''}
+      </div>
+    `;
+
+    // Genre filters
     if (genres.length > 0) {
-      h += `<div class="genre-pills"><button class="genre-pill ${!filterGenre || filterGenre === "All" ? "active" : ""}" data-genre="All">All</button>`;
-      genres.forEach(g => { h += `<button class="genre-pill ${filterGenre === g ? "active" : ""}" data-genre="${esc(g)}">${esc(g)}</button>`; });
+      h += `<div style="margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap;">
+        <button class="genre-pill ${!filterGenre || filterGenre === "All" ? "active" : ""}" data-genre="All" style="border: 1px solid var(--border); background: var(--surface-2); color: var(--text); padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size:0.75rem;">All</button>`;
+      genres.forEach(g => { 
+        h += `<button class="genre-pill ${filterGenre === g ? "active" : ""}" data-genre="${esc(g)}" style="border: 1px solid var(--border); background: var(--surface-2); color: var(--text); padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size:0.75rem;">${esc(g)}</button>`; 
+      });
       h += `</div>`;
     }
-    if (songs.length === 0) { h += `<p style="color:var(--text-dim);text-align:center;padding:30px 0;font-size:0.85rem;">No liked songs${filterGenre && filterGenre !== "All" ? " in this genre" : ""}</p>`; }
-    songs.forEach((s, i) => {
-      h += `<div class="sidebar-song-item"><img class="sidebar-song-thumb" src="${s.thumbnail || ""}" alt=""><div class="sidebar-song-info" data-idx="${i}"><div class="sidebar-song-title">${esc(s.title)}</div><div class="sidebar-song-artist">${esc(s.artist || "")}</div></div><div class="sidebar-song-actions"><button class="sidebar-song-genre" data-vid="${s.video_id}" title="Change genre">${esc(s.genre || "Unknown")}</button><button class="sidebar-song-btn" data-vid="${s.video_id}" title="Remove">🗑️</button></div></div>`;
-    });
-    // Play all buttons
-    if (songs.length > 0) {
-      h += `<div class="sidebar-detail-actions" style="margin-top:12px"><button class="modal-btn modal-btn-primary" id="sbPlayLikedList">▶ Play All</button><button class="modal-btn modal-btn-ghost" id="sbShuffleLiked">🔀 Shuffle</button></div>`;
+
+    // Songs Table
+    if (songs.length === 0) {
+      h += `<p style="color:var(--text-dim);text-align:center;padding:40px 0;font-size:0.88rem;">No liked songs${filterGenre && filterGenre !== "All" ? " in this genre" : ""}</p>`;
+    } else {
+      h += `
+        <table class="playlist-songs-table">
+          <thead>
+            <tr>
+              <th style="width: 50px; text-align: center;">#</th>
+              <th>Title</th>
+              <th>Genre</th>
+              <th style="width: 100px;"></th>
+              <th style="width: 80px; text-align: right;"><svg class="clock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      songs.forEach((s, i) => {
+        h += `
+          <tr class="song-row" data-idx="${i}">
+            <td class="song-index" style="text-align: center;">${i + 1}</td>
+            <td class="song-title-cell">
+              <img class="song-row-thumb" src="${s.thumbnail || ""}" alt="" loading="lazy">
+              <div class="song-row-details">
+                <div class="song-row-title">${esc(s.title)}</div>
+                <div class="song-row-artist">${esc(s.artist || "")}</div>
+              </div>
+            </td>
+            <td class="song-row-genre">
+              <button class="sidebar-song-genre" data-vid="${s.video_id}" title="Change genre">${esc(s.genre || "Unknown")}</button>
+            </td>
+            <td class="song-row-actions" style="text-align: right;">
+              <button class="sidebar-song-btn sidebar-remove-btn" data-vid="${s.video_id}" title="Remove">✕</button>
+            </td>
+            <td class="song-row-duration" style="text-align: right; color: var(--text-dim);">—</td>
+          </tr>
+        `;
+      });
+
+      h += `
+          </tbody>
+        </table>
+      `;
     }
-    sidebarContent.innerHTML = h;
-    document.getElementById("sbBack").addEventListener("click", () => renderMain());
-    sidebarContent.querySelectorAll(".genre-pill").forEach(el => {
+
+    playlistView.innerHTML = h;
+
+    // Attach Listeners
+    document.getElementById("sbBack").addEventListener("click", () => showHomeView());
+    
+    playlistView.querySelectorAll(".genre-pill").forEach(el => {
       el.addEventListener("click", () => renderLiked(el.dataset.genre));
     });
-    sidebarContent.querySelectorAll(".sidebar-song-info").forEach(el => {
-      el.addEventListener("click", () => {
+
+    playlistView.querySelectorAll(".song-row").forEach(el => {
+      el.addEventListener("click", (e) => {
+        if (e.target.closest(".sidebar-song-genre") || e.target.closest(".sidebar-remove-btn")) return;
         const idx = +el.dataset.idx;
         API("/play_list", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ songs, start_index: idx, mode: "list" }) });
       });
     });
-    sidebarContent.querySelectorAll(".sidebar-song-btn").forEach(el => {
-      el.addEventListener("click", async () => {
+
+    playlistView.querySelectorAll(".sidebar-remove-btn").forEach(el => {
+      el.addEventListener("click", async (e) => {
+        e.stopPropagation();
         await API("/like", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ video_id: el.dataset.vid }) });
         renderLiked(filterGenre);
       });
     });
-    sidebarContent.querySelectorAll(".sidebar-song-genre").forEach(el => {
-      el.addEventListener("click", () => showGenreEditModal(el.dataset.vid, el.textContent, "liked", null, filterGenre));
+
+    playlistView.querySelectorAll(".sidebar-song-genre").forEach(el => {
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        showGenreEditModal(el.dataset.vid, el.textContent, "liked", null, filterGenre);
+      });
     });
+
     const playAllBtn = document.getElementById("sbPlayLikedList");
-    if (playAllBtn) playAllBtn.addEventListener("click", () => {
-      API("/play_list", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ songs, start_index: 0, mode: "list" }) });
-    });
+    if (playAllBtn) {
+      playAllBtn.addEventListener("click", () => {
+        API("/play_list", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ songs, start_index: 0, mode: "list" }) });
+      });
+    }
+
     const shuffleBtn = document.getElementById("sbShuffleLiked");
-    if (shuffleBtn) shuffleBtn.addEventListener("click", () => {
-      API("/play_list", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ songs, start_index: 0, mode: "shuffle" }) });
-    });
+    if (shuffleBtn) {
+      shuffleBtn.addEventListener("click", () => {
+        API("/play_list", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ songs, start_index: 0, mode: "shuffle" }) });
+      });
+    }
   }
 
   async function renderPlaylistDetail(pid) {
     const pdata = await API(`/playlists/${pid}`);
-    if (!pdata || pdata.error) { renderMain(); return; }
+    if (!pdata || pdata.error) { showHomeView(); return; }
     const songs = pdata.songs || [];
-    let h = `<div class="sidebar-detail-header"><button class="sidebar-back-btn" id="sbBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button><h3 style="font-family:var(--font-display);font-weight:700;font-size:1.1rem;">${esc(pdata.name)}</h3></div>`;
-    h += `<div class="sidebar-detail-cover" id="sbCoverArea">`;
-    if (pdata.cover) h += `<img src="${pdata.cover}" alt="">`;
-    else h += `<span style="font-size:3rem;">🎵</span>`;
-    h += `<div class="cover-overlay">📷 Change Cover</div></div>`;
-    h += `<div class="sidebar-detail-meta">${songs.length} song${songs.length !== 1 ? "s" : ""}</div>`;
-    h += `<div class="sidebar-detail-actions"><button class="modal-btn modal-btn-primary" id="sbPlayPl">▶ Play</button><button class="modal-btn modal-btn-ghost" id="sbShufflePl">🔀 Shuffle</button><button class="modal-btn modal-btn-ghost" id="sbAddSongs">+ Add Songs</button><button class="modal-btn modal-btn-danger" id="sbDeletePl">🗑️</button></div>`;
-    songs.forEach((s, i) => {
-      h += `<div class="sidebar-song-item"><img class="sidebar-song-thumb" src="${s.thumbnail || ""}" alt=""><div class="sidebar-song-info" data-idx="${i}"><div class="sidebar-song-title">${esc(s.title)}</div><div class="sidebar-song-artist">${esc(s.artist || "")}</div></div><div class="sidebar-song-actions"><button class="sidebar-song-genre" data-vid="${s.video_id}" title="Change genre">${esc(s.genre || "Unknown")}</button><button class="sidebar-song-btn sidebar-remove-btn" data-vid="${s.video_id}" title="Remove">✕</button></div></div>`;
-    });
-    sidebarContent.innerHTML = h;
-    document.getElementById("sbBack").addEventListener("click", () => renderMain());
+    
+    showPlaylistView();
+
+    let h = `
+      <button class="playlist-back-btn" id="sbBack">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+        Back to Home
+      </button>
+      
+      <div class="playlist-header">
+        <div class="playlist-cover-art" id="sbCoverArea">
+          ${pdata.cover ? `<img src="${pdata.cover}" alt="">` : `<span style="font-size:3.5rem;">🎵</span>`}
+          <div class="cover-overlay">📷 Change Cover</div>
+        </div>
+        <div class="playlist-header-info">
+          <span class="playlist-badge">Playlist</span>
+          <h1 class="playlist-name">${esc(pdata.name)}</h1>
+          <p class="playlist-metadata">
+            <span class="playlist-creator">Miko</span> • ${songs.length} song${songs.length !== 1 ? "s" : ""}
+          </p>
+        </div>
+      </div>
+    `;
+
+    // Action bar
+    h += `
+      <div class="playlist-actions-bar">
+        ${songs.length > 0 ? `
+          <button class="play-playlist-btn" id="sbPlayPl" title="Play All">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <button class="playlist-action-btn" id="sbShufflePl" title="Shuffle">🔀 Shuffle</button>
+        ` : ''}
+        <button class="playlist-action-btn" id="sbAddSongs" title="Add Songs">➕ Add Songs</button>
+        <button class="playlist-action-btn btn-danger" id="sbDeletePl" title="Delete Playlist">🗑️ Delete</button>
+      </div>
+    `;
+
+    // Songs Table
+    if (songs.length === 0) {
+      h += `<p style="color:var(--text-dim);text-align:center;padding:40px 0;font-size:0.88rem;">No songs in this playlist yet. Click "+ Add Songs" to search and add tracks!</p>`;
+    } else {
+      h += `
+        <table class="playlist-songs-table">
+          <thead>
+            <tr>
+              <th style="width: 50px; text-align: center;">#</th>
+              <th>Title</th>
+              <th>Genre</th>
+              <th style="width: 100px;"></th>
+              <th style="width: 80px; text-align: right;"><svg class="clock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      songs.forEach((s, i) => {
+        h += `
+          <tr class="song-row" data-idx="${i}">
+            <td class="song-index" style="text-align: center;">${i + 1}</td>
+            <td class="song-title-cell">
+              <img class="song-row-thumb" src="${s.thumbnail || ""}" alt="" loading="lazy">
+              <div class="song-row-details">
+                <div class="song-row-title">${esc(s.title)}</div>
+                <div class="song-row-artist">${esc(s.artist || "")}</div>
+              </div>
+            </td>
+            <td class="song-row-genre">
+              <button class="sidebar-song-genre" data-vid="${s.video_id}" title="Change genre">${esc(s.genre || "Unknown")}</button>
+            </td>
+            <td class="song-row-actions" style="text-align: right;">
+              <button class="sidebar-remove-btn" data-vid="${s.video_id}">✕</button>
+            </td>
+            <td class="song-row-duration" style="text-align: right; color: var(--text-dim);">—</td>
+          </tr>
+        `;
+      });
+
+      h += `
+          </tbody>
+        </table>
+      `;
+    }
+
+    playlistView.innerHTML = h;
+
+    // Attach Listeners
+    document.getElementById("sbBack").addEventListener("click", () => showHomeView());
     document.getElementById("sbCoverArea").addEventListener("click", () => showCoverModal(pid));
+    
     const playBtn = document.getElementById("sbPlayPl");
-    if (playBtn) playBtn.addEventListener("click", () => {
-      if (songs.length) API("/play_list", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ songs, start_index: 0, mode: "list" }) });
-    });
+    if (playBtn) {
+      playBtn.addEventListener("click", () => {
+        if (songs.length) API("/play_list", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ songs, start_index: 0, mode: "list" }) });
+      });
+    }
+
     const shuffleBtn = document.getElementById("sbShufflePl");
-    if (shuffleBtn) shuffleBtn.addEventListener("click", () => {
-      if (songs.length) API("/play_list", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ songs, start_index: 0, mode: "shuffle" }) });
-    });
+    if (shuffleBtn) {
+      shuffleBtn.addEventListener("click", () => {
+        if (songs.length) API("/play_list", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ songs, start_index: 0, mode: "shuffle" }) });
+      });
+    }
+
     document.getElementById("sbAddSongs").addEventListener("click", () => showAddSongsModal(pid));
+    
     document.getElementById("sbDeletePl").addEventListener("click", async () => {
-      if (confirm("Delete this playlist?")) { await API(`/playlists/${pid}`, { method: "DELETE" }); renderMain(); }
+      if (confirm("Delete this playlist?")) { 
+        await API(`/playlists/${pid}`, { method: "DELETE" }); 
+        showHomeView();
+        renderMain(); 
+      }
     });
-    sidebarContent.querySelectorAll(".sidebar-song-info").forEach(el => {
-      el.addEventListener("click", () => {
+
+    playlistView.querySelectorAll(".song-row").forEach(el => {
+      el.addEventListener("click", (e) => {
+        if (e.target.closest(".sidebar-song-genre") || e.target.closest(".sidebar-remove-btn")) return;
         const idx = +el.dataset.idx;
         API("/play_list", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ songs, start_index: idx, mode: "list" }) });
       });
     });
-    sidebarContent.querySelectorAll(".sidebar-remove-btn").forEach(el => {
-      el.addEventListener("click", async () => {
+
+    playlistView.querySelectorAll(".sidebar-remove-btn").forEach(el => {
+      el.addEventListener("click", async (e) => {
+        e.stopPropagation();
         await API(`/playlists/${pid}/songs`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ video_id: el.dataset.vid }) });
         renderPlaylistDetail(pid);
       });
     });
-    sidebarContent.querySelectorAll(".sidebar-song-genre").forEach(el => {
-      el.addEventListener("click", () => showGenreEditModal(el.dataset.vid, el.textContent, "playlist", pid));
+
+    playlistView.querySelectorAll(".sidebar-song-genre").forEach(el => {
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        showGenreEditModal(el.dataset.vid, el.textContent, "playlist", pid);
+      });
     });
   }
 
@@ -233,7 +442,7 @@
   }
 
   function showGenreEditModal(videoId, currentGenre, source, pid, filterGenre) {
-    const presets = ["Pop", "Rock", "Hip-Hop", "R&B", "Electronic", "Jazz", "Classical", "Country", "Latin", "K-Pop", "Bollywood", "Indie", "Metal", "Folk", "Lo-Fi", "Unknown"];
+    const presets = ["Pop", "Rock", "Hip-Hop", "R&B", "Electronic", "Jazz", "Classical", "Country", "Latin", "K-Pop", "Bollywood", "Indie", "Metal", "Folk", "Lo-Fi", "DHH", "Unknown"];
     let html = `<h3 class="modal-title">Set Genre</h3>`;
     html += `<input class="modal-input" id="genreInput" placeholder="Type a genre..." value="${esc(currentGenre || "")}" autofocus />`;
     html += `<div class="genre-pills" style="margin-bottom:16px;">`;
@@ -261,4 +470,13 @@
   
   // Auto-render library on load to show left icon bar
   setTimeout(renderMain, 100);
+
+  // Logo click triggers Home Dashboard
+  const logo = document.querySelector(".logo");
+  if (logo) {
+    logo.style.cursor = "pointer";
+    logo.addEventListener("click", () => {
+      showHomeView();
+    });
+  }
 })();
